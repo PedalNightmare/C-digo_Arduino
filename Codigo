@@ -1,0 +1,145 @@
+/*          Nigthmare interface
+ *           Programa Efeitos
+ */
+ #include <SoftwareSerial.h>
+SoftwareSerial BT(10, 11); // RX, TX
+//Definições
+#define LED 13
+#define FOOTSWITCH 12
+#define TOGGLE 2
+#define PUSHBUTTON_1 A5
+#define PUSHBUTTON_2 A4
+#define PWM_FREQ 0x00FF 
+#define PWM_MODE 0 
+#define PWM_QTY 2 
+//Variaveis
+int input;
+int counter=0;
+int effect=0;
+int toggle_position=0;
+byte ADC_low, ADC_high;
+ char c;
+int vol_variable=10000;
+int distortion_threshold=6000;
+int fuzz_threshold=6000;
+int bit_crush_variable=0;
+ 
+// Configurações
+void setup() {
+  //Configura bluetooth
+   Serial.begin(9600);
+   BT.begin(9600); 
+
+  pinMode(FOOTSWITCH, INPUT_PULLUP);
+  pinMode(TOGGLE, INPUT_PULLUP);
+  pinMode(PUSHBUTTON_1, INPUT_PULLUP);
+  pinMode(PUSHBUTTON_2, INPUT_PULLUP);
+  pinMode(LED, OUTPUT);
+ 
+//Configura PWM
+  ADMUX = 0x60; 
+  ADCSRA = 0xe5; 
+  ADCSRB = 0x07; 
+  DIDR0 = 0x01; 
+ 
+ 
+  TCCR1A = (((PWM_QTY - 1) << 5) | 0x80 | (PWM_MODE << 1));
+  TCCR1B = ((PWM_MODE << 3) | 0x11); 
+  TIMSK1 = 0x20; 
+  ICR1H = (PWM_FREQ >> 8);
+  ICR1L = (PWM_FREQ & 0xff);
+  DDRB |= ((PWM_QTY << 1) | 0x02); 
+  sei(); 
+ 
+
+  toggle_position = digitalRead(TOGGLE);
+  }
+ 
+void loop() 
+{
+   if (BT.available()) // Read device output if available.
+  {
+    while(BT.available()) // While there is more to be read, keep reading.
+   {
+     delay(10); //Delay added to make thing stable 
+     char comand = BT.read(); //Conduct a serial read
+     c += comand; //build the string.
+    }} 
+ 
+  if (digitalRead(FOOTSWITCH)) digitalWrite(LED, HIGH); 
+    else  digitalWrite(LED, LOW);
+ 
+ 
+  if(digitalRead(TOGGLE)!=toggle_position)
+    {
+    toggle_position = digitalRead(TOGGLE); 
+    effect++;
+    if (effect>4) effect=0;
+ 
+    vol_variable=10000;
+    distortion_threshold=6000;
+    fuzz_threshold=6000;
+    bit_crush_variable=0;
+  }
+ 
+}
+ISR(TIMER1_CAPT_vect) 
+{
+  
+  ADC_low = ADCL; 
+  ADC_high = ADCH;
+ 
+  input = ((ADC_high << 8) | ADC_low) + 0x8000; 
+ 
+counter++; 
+if(counter==100)
+{ 
+counter=0;
+if (c=='a') 
+  {
+    if (vol_variable<32768)vol_variable=vol_variable+10; //Aumenta volume
+    if(distortion_threshold<32768)distortion_threshold=distortion_threshold+25; //Aumenta distorção
+    if (fuzz_threshold<32768)fuzz_threshold=fuzz_threshold+25; //Aumenta FUZZ-
+    if (bit_crush_variable<16)bit_crush_variable=bit_crush_variable+1; //Aumenta o bit
+    digitalWrite(LED, LOW); //blinks the led
+    }
+ 
+    if (c=='b')
+  {
+    if (vol_variable>0)vol_variable=vol_variable-10; //diminui o volume
+    if (distortion_threshold>0)distortion_threshold=distortion_threshold-25; //diminui a distorção
+    if (fuzz_threshold>0)fuzz_threshold=fuzz_threshold-25; //diminui fuzz
+    if (bit_crush_variable>0)bit_crush_variable=bit_crush_variable-1; //diminui o bit
+    digitalWrite(LED, LOW); //blinks the led
+    }
+}
+ 
+
+ 
+  if (c=='1') 
+    {
+     
+    }
+
+   else if(c=='2') 
+    {
+      input = map(input, -32768, +32768,-vol_variable, vol_variable);
+    }
+   else if(c=='3') 
+    {
+      if(input>distortion_threshold) input=distortion_threshold;
+    }
+   else if(c=='4') 
+    {
+      if(input>fuzz_threshold) input=32768;
+        else if(input<-fuzz_threshold) input=-32768; 
+    }
+   else if(c=='5') 
+    {
+  input = input<<bit_crush_variable;
+    }
+ 
+ 
+  OCR1AL = ((input + 0x8000) >> 8); // convert to unsigned, send out high byte
+  OCR1BL = input; // send out low byte
+}
